@@ -45,7 +45,6 @@ idna = ">=3.20,<4"
 charset-normalizer = ">=3.5.2,<4"
 certifi = ">=2026.10.23,<2027"
 parallel = ">=20260922,<20260923"
-openjdk = ">=25.0.1,<26"
 nodejs = ">=20.12.2,<20.13"
 compilers = ">=2.0.0,<3"
 make = ">=4.4.1,<5"
@@ -60,14 +59,68 @@ r-ggpubr = ">=0.6.1,<0.7"
 click = ">=8.5.1,<9"
 pyyaml = ">=6.0.3,<7"
 r-collapse = ">=2.1.3,<3"
-snpeff = ">=5.4.0c,<6"
 echtvar = ">=0.2.4,<0.3"
 "r-r.utils" = ">=2.13.0,<3"
 
-# Keep VEP's native dependencies independent of the main pipeline environment.
+# Bootstrap after cloning or recreating environments:
+#   pixi run -e default setup-pipeline
+#   pixi run -e vep setup-vep
+# Each setup rechecks jdk.java.net's latest production release; no early access
+# or older Conda Java is used. Repeat setup to adopt future Java releases.
+# Downloads are verified by the setup scripts, not represented as Conda packages.
+# VEP/SnpEff sources are pinned; Java deliberately tracks latest instead of a pin.
+# Installed sources live under each environment's opt/ and survive pixi install.
+# VEP caches, FASTA, plugins and optional BigWig support are not installed here.
+# Runtime commands remain: pixi run -e vep vep ... / pixi run snpEff ...
+[feature.runtime.dependencies]
+python = ">=3.12,<3.13"
+
+[feature.runtime.activation]
+scripts = ["scripts/activate-java.sh"]
+
+[feature.runtime.tasks]
+setup-java = { cmd = "python scripts/setup-java.py", description = "Install the latest production upstream JDK with SHA-256 verification" }
+
+[tasks.setup-snpeff]
+cmd = "python scripts/setup-snpeff.py"
+depends-on = ["setup-java"]
+description = "Install standalone SnpEff without Conda's older Java dependency"
+
+[tasks.setup-pipeline]
+depends-on = ["setup-snpeff"]
+description = "Set up the main environment's source-managed tools"
+
+# Install upstream VEP with setup-vep, not Bioconda's legacy BioPerl metapackage.
 [feature.vep.dependencies]
-ensembl-vep = ">=116.3,<117"
+perl = "5.32.*"
+perl-bioperl-core = "1.7.8.*"
+perl-dbi = "*"
+perl-dbd-mysql = ">=4.046,<=4.050"
+perl-json = "*"
+perl-set-intervaltree = "*"
+perl-text-csv = "*"
+perl-perlio-gzip = "*"
+perl-io-compress = "*"
+perl-sereal = "*"
+perl-module-build = "0.4234.*"
+perl-extutils-cbuilder = "*"
+perl-list-moreutils = "*"
+perl-io-string = "*"
+perl-try-tiny = "*"
+perl-uri = "*"
+perl-dbd-sqlite = "*"
+perl-libwww-perl = "*"
+htslib = ">=1.21,<1.25"
+samtools = ">=1.21,<2"
+zlib = ">=1.3.1,<2"
+# Perl 5.32's headers require the glibc 2.17 build sysroot (xlocale.h).
+c-compiler = "1.9.*"
+sysroot_linux-64 = "2.17.*"
+make = ">=4.4.1,<5"
+
+[feature.vep.tasks]
+setup-vep = { cmd = "python scripts/setup-vep.py", depends-on = ["setup-java"], description = "Install pinned VEP 116.3 and Bio::DB::HTS without legacy SAMtools dependencies" }
 
 [environments]
-default = { features = [] }
-vep = { features = ["vep"], no-default-feature = true }
+default = { features = ["runtime"] }
+vep = { features = ["runtime", "vep"], no-default-feature = true }
