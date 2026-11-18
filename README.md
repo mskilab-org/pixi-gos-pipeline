@@ -99,6 +99,46 @@ Inside an activated shell, run tools directly, then use `exit` to return to
 macOS. VEP software installation does not install species caches or reference
 genomes; supply those separately for annotation workloads.
 
+### Source-managed tools: setup and repair
+
+Inside Linux, bootstrap the tools after installing the Pixi environments:
+
+```bash
+pixi run --locked -e default setup-pipeline
+pixi run --locked -e vep setup-vep
+```
+
+Separate force tasks reinstall even when the installed version is current:
+
+```bash
+# Repair only Java, for example after deleting lib/jrt-fs.jar.
+pixi run --locked -e default setup-java-force
+pixi run --locked -e vep setup-java-force
+
+# Replace Java plus SnpEff/SnpSift in the default environment.
+pixi run --locked -e default setup-snpeff-force
+# Equivalent umbrella task for the default environment.
+pixi run --locked -e default setup-pipeline-force
+
+# Replace Java plus VEP and rebuild its HTS bindings.
+pixi run --locked -e vep setup-vep-force
+```
+
+From macOS, substitute `./pixi-linux` for `pixi`. These tasks replace only
+the selected environment's managed `opt/java`, `opt/snpeff`, and/or `opt/vep`
+directories, not its Conda packages or the entire Pixi environment. Java is
+rediscovered from the latest production release; SnpEff and VEP stay pinned.
+Downloads remain checksum-verified, and replacements are staged before the
+old installation is moved aside. Unmanaged installations and conflicting
+commands are still refused, including in force mode.
+
+**Back up custom files first:** replaced directories lose all local changes,
+including SnpEff databases under `opt/snpeff/data`, edited `snpEff.config`,
+and plugins placed inside `opt/vep`. Caches, references, and databases stored
+outside the replaced directories are untouched. Do not run force setup while
+those tools are running. Ordinary setup tasks retain their existing reuse
+behavior; they do not comprehensively detect or repair missing runtime files.
+
 ## Machine lifecycle
 
 ```bash

@@ -5,6 +5,7 @@ The archive and SHA-256 are the upstream inputs for Bioconda's 5.4.0c
 package. No Conda package or Java runtime is downloaded by this installer.
 """
 
+import argparse
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
@@ -100,10 +101,21 @@ def install_archive(opt, destination):
             if not (extracted / name).is_file():
                 raise RuntimeError(f"Missing SnpEff distribution file: {name}")
         (extracted / ".archive-sha256").write_text(SHA256 + "\n", encoding="utf-8")
-        extracted.rename(destination)
+        backup = staging / "previous-snpeff"
+        if destination.exists():
+            destination.rename(backup)
+        try:
+            extracted.rename(destination)
+        except BaseException:
+            if backup.exists():
+                backup.rename(destination)
+            raise
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--force", action="store_true", help="Replace the managed SnpEff installation, including local data and configuration")
+    args = parser.parse_args()
     prefix_value = os.environ.get("CONDA_PREFIX")
     if not prefix_value:
         raise RuntimeError("CONDA_PREFIX is required; run inside the Pixi environment")
@@ -119,10 +131,17 @@ def main():
         if (destination.is_symlink() or not marker.is_file()
                 or marker.read_text(encoding="utf-8").strip() != SHA256):
             raise RuntimeError(f"Refusing to replace an unmanaged SnpEff installation: {destination}")
-        for name in (*JARS.values(), "snpEff.config"):
-            if not (destination / name).is_file():
-                raise RuntimeError(f"Incomplete SnpEff installation: {destination / name}")
-    else:
+        if not args.force:
+            for name in (*JARS.values(), "snpEff.config"):
+                if not (destination / name).is_file():
+                    raise RuntimeError(f"Incomplete SnpEff installation: {destination / name}")
+    for command in JARS:
+        link = prefix / "bin" / command
+        if os.path.lexists(link) and not (
+            link.is_symlink() and link.resolve() == destination / command
+        ):
+            raise RuntimeError(f"Refusing to replace another package's command: {link}")
+    if args.force or not destination.exists():
         install_archive(opt, destination)
 
     for command, jar_name in JARS.items():
@@ -131,11 +150,7 @@ def main():
         launcher.chmod(0o755)
         link = prefix / "bin" / command
         if link.is_symlink():
-            if link.resolve() == launcher:
-                continue
-            raise RuntimeError(f"Refusing to replace another package's command: {link}")
-        if link.exists():
-            raise RuntimeError(f"Refusing to replace another package's command: {link}")
+            continue
         link.symlink_to(Path("..") / "opt" / "snpeff" / command)
     print(f"SnpEff 5.4c installed in {destination} (Java: {java})")
 

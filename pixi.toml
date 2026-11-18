@@ -80,6 +80,7 @@ scripts = ["scripts/activate-java.sh"]
 
 [feature.runtime.tasks]
 setup-java = { cmd = "python scripts/setup-java.py", description = "Install the latest production upstream JDK with SHA-256 verification" }
+setup-java-force = { cmd = "python scripts/setup-java.py --force", description = "Replace the managed JDK even when the latest production version is already installed" }
 
 [tasks.setup-snpeff]
 cmd = "python scripts/setup-snpeff.py"
@@ -89,6 +90,15 @@ description = "Install standalone SnpEff without Conda's older Java dependency"
 [tasks.setup-pipeline]
 depends-on = ["setup-snpeff"]
 description = "Set up the main environment's source-managed tools"
+
+[tasks.setup-snpeff-force]
+cmd = "python scripts/setup-snpeff.py --force"
+depends-on = ["setup-java-force"]
+description = "Replace managed Java and SnpEff, discarding local SnpEff data and configuration"
+
+[tasks.setup-pipeline-force]
+depends-on = ["setup-snpeff-force"]
+description = "Force reinstall the main environment's source-managed tools"
 
 # Install upstream VEP with setup-vep, not Bioconda's legacy BioPerl metapackage.
 [feature.vep.dependencies]
@@ -120,6 +130,7 @@ make = ">=4.4.1,<5"
 
 [feature.vep.tasks]
 setup-vep = { cmd = "python scripts/setup-vep.py", depends-on = ["setup-java"], description = "Install pinned VEP 116.3 and Bio::DB::HTS without legacy SAMtools dependencies" }
+setup-vep-force = { cmd = "python scripts/setup-vep.py --force", depends-on = ["setup-java-force"], description = "Replace managed Java and rebuild pinned VEP and HTS bindings" }
 
 [environments]
 default = { features = ["runtime"] }

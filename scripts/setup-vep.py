@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install VEP's APIs and HTS bindings without the BioPerl metapackage."""
 
+import argparse
 import hashlib
 import json
 import os
@@ -45,6 +46,9 @@ def fetch(name, directory):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--force", action="store_true", help="Rebuild and replace the managed VEP installation")
+    args = parser.parse_args()
     prefix = Path(os.environ["CONDA_PREFIX"]).resolve()
     if os.environ.get("PIXI_ENVIRONMENT_NAME") != "vep":
         raise RuntimeError("Run this installer with pixi run -e vep setup-vep")
@@ -60,9 +64,9 @@ def main():
         link = prefix / "bin" / command
         if os.path.lexists(link) and (not link.is_symlink() or link.resolve() != target / command):
             raise RuntimeError(f"Refusing to overwrite unmanaged command: {link}")
-    if target.exists() and not (target / MARKER).is_file():
+    if target.is_symlink() or (target.exists() and not (target / MARKER).is_file()):
         raise RuntimeError(f"Refusing to replace unmanaged installation: {target}")
-    if target.exists() and json.loads((target / MARKER).read_text()) == identity:
+    if not args.force and target.exists() and json.loads((target / MARKER).read_text()) == identity:
         print("Pinned VEP 116.3 installation is current")
     else:
         target.parent.mkdir(parents=True, exist_ok=True)

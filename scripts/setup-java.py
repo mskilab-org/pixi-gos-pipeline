@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install the latest production jdk.java.net Linux x64 JDK in this Pixi prefix."""
 
+import argparse
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -195,6 +196,9 @@ def install_links(bin_dir, names):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--force", action="store_true", help="Reinstall the managed JDK even when its version is current")
+    args = parser.parse_args()
     prefix_value = os.environ.get("CONDA_PREFIX")
     if not prefix_value:
         raise RuntimeError("CONDA_PREFIX is required; run this task inside a Pixi environment")
@@ -213,7 +217,7 @@ def main():
     destination = opt / "java"
     previous = owned_install(destination) if os.path.lexists(destination) else None
     old_commands = set(previous["commands"]) if previous else set()
-    if previous and all(previous.get(key) == value for key, value in identity.items()):
+    if not args.force and previous and all(previous.get(key) == value for key, value in identity.items()):
         installed = inspect_jdk(destination, identity["version"])
         if any(previous.get(key) != value for key, value in installed.items()):
             raise RuntimeError("Installed Java identity changed; refusing to report it as verified")
