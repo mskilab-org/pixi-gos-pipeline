@@ -5,6 +5,28 @@ This project targets `linux-64`. On Apple Silicon Macs, use OrbStack's
 translation. The `pixi-linux` script forwards arguments to Pixi inside that
 machine and runs them in this repository's directory.
 
+## Why a Linux machine, not Docker?
+
+Use the OrbStack `amd64` Linux machine for this project. Pixi already manages
+the two software environments; Docker is not required to install or run them.
+A Docker image would add build, image, and volume management without removing
+the x86-64 translation requirement. It is useful if you need to distribute a
+prebuilt image or deploy to a container platform, not as a Rosetta workaround.
+
+On Apple Silicon, **both an `amd64` machine and an `amd64` Docker container
+normally use Rosetta**. The `linux-64` lockfile and Linux x64 Java installer
+require x86-64; switching to an ARM machine alone will not make them native.
+Using an `amd64` distro supplies the matching Linux loader and system libraries,
+but does not guarantee compatibility with every translated program.
+
+OrbStack documents near-zero additional CPU use for idle machines and releases
+unused memory. The resource limits below are ceilings, not reserved RAM or CPU.
+The pipeline dependencies and data still consume disk space with either setup;
+containers are not inherently heavyweight, but add no necessary layer here.
+
+See [OrbStack Linux machines](https://docs.orbstack.dev/machines/) and
+[resource settings](https://docs.orbstack.dev/settings).
+
 ## Installation
 
 Requires macOS 14 or later and [Homebrew](https://brew.sh/).
@@ -26,9 +48,8 @@ orbctl create --arch amd64 --cpus 4 --memory 8G --disk 80G ubuntu:24.04 gos-pipe
 ```
 
 The name **`gos-pipeline`** is required by `pixi-linux`. The `amd64`
-architecture is required by this project's locked dependencies. The resource
-limits above are the configuration used for the verified installation; adjust
-them for your workloads if needed.
+architecture is required by this project's locked dependencies. These are
+resource limits, not preallocated capacity; adjust them for your workloads.
 
 Skip this step if the machine already exists. Inspect it with:
 
@@ -68,6 +89,51 @@ agree and does not update the lockfile.
 The repository's `.pixi/config.toml` permits package post-link scripts, which
 are needed by some dependencies. Only install packages from sources you trust.
 
+### 5. Bootstrap source-managed tools
+
+`pixi install` alone does not install Java, SnpEff/SnpSift, VEP, or the GitHub
+R packages gGnome, JaBbA, and Skilift. From macOS:
+
+```bash
+./pixi-linux run --locked -e default setup-pipeline
+./pixi-linux run --locked -e vep setup-vep
+```
+
+The Java/SnpEff/VEP tasks install checksum-verified sources inside Linux.
+Java tracks the latest production upstream release; SnpEff and VEP are pinned.
+Species caches, reference FASTA files, and plugins must be supplied separately.
+Repeat ordinary setup after recreating the environments, or to adopt newer Java.
+
+`setup-pipeline` also runs `setup-r-packages`, which uses `devtools::install_github`
+for `mskilab-org/gGnome`, `mskilab-org/JaBbA`, and `mskilab-org/skilift`, including
+their required dependencies. It installs `bamUtils` first because upstream
+`gTrack` imports it without declaring its GitHub location, and selects the
+Bioconductor release compatible with the installed R. Git is included in the
+Pixi dependencies for Bioconductor remotes. To refresh just these R packages:
+
+```bash
+./pixi-linux run --locked -e default setup-r-packages
+./pixi-linux run --locked Rscript -e 'library(gGnome); library(JaBbA); library(Skilift)'
+```
+
+The repository name is `skilift`, but its R package name is **`Skilift`**.
+Installation targets the default Pixi environment's `lib/R/library`, not a
+macOS or user R library. Required CRAN/Bioconductor dependencies are resolved
+noninteractively; optional suggested packages and vignettes are not requested.
+Automatic dependency upgrades are disabled, though missing or insufficient
+dependencies can still require installation. GitHub packages and these source
+dependencies are **not locked by `pixi.lock`** and may change between setups.
+Recreating the Pixi environment requires rerunning setup. A `GITHUB_PAT` can
+be provided in the Linux environment if GitHub API rate limits are encountered.
+
+Setup verifies package loading in a fresh R process, so dependency updates are
+not confused with older namespaces retained by the installer. To check an
+existing installation without downloading packages:
+
+```bash
+./pixi-linux run --locked Rscript --vanilla scripts/check-r-packages.R
+```
+
 ## Usage
 
 Use `./pixi-linux` wherever you would normally use `pixi`:
@@ -101,12 +167,7 @@ genomes; supply those separately for annotation workloads.
 
 ### Source-managed tools: setup and repair
 
-Inside Linux, bootstrap the tools after installing the Pixi environments:
-
-```bash
-pixi run --locked -e default setup-pipeline
-pixi run --locked -e vep setup-vep
-```
+Complete installation step 5 before using the source-managed tools.
 
 Separate force tasks reinstall even when the installed version is current:
 
@@ -157,6 +218,33 @@ removes its Linux filesystem, including installed environments and any data
 stored only there.
 
 ## Troubleshooting
+
+### Rosetta compatibility
+
+An `amd64` machine avoids mixing ARM system libraries with x86-64 packages,
+but Rosetta remains part of execution on Apple Silicon. Verify representative
+pipeline inputs, not just tool version output, before trusting an analysis.
+
+If a failure is specific to Rosetta, OrbStack provides a slower non-Rosetta
+fallback. This is a manual diagnostic option, not automatic per-tool failover:
+
+```bash
+# Inspect the current setting before changing it.
+orbctl config get rosetta
+# After stopping active workloads, disable Rosetta in OrbStack.
+orbctl config set rosetta false
+# Re-run the failing command through ./pixi-linux with the same input.
+# Restore this only if Rosetta was enabled before the diagnostic.
+orbctl config set rosetta true
+```
+
+This setting is global: it affects other OrbStack machines and containers too.
+Follow any restart prompts from OrbStack. The fallback is not verified for this
+pipeline and may be substantially slower. If both modes fail, use native x86-64
+Linux for a translation-free run; Docker on the same Mac does not supply that.
+See [OrbStack's Rosetta setting](https://docs.orbstack.dev/settings#use-rosetta-to-run-intel-code).
+
+### Installation and files
 
 - **`orbctl: command not found`:** install OrbStack and complete its app setup.
 - **Machine not found:** create the machine with the exact name `gos-pipeline`.

@@ -10,6 +10,7 @@ setup-scripts = "if [ ! -d 'git/gos_process_helpers' ]; then mkdir -p gos_proces
 
 
 [dependencies]
+git = ">=2,<3"
 samtools = ">=1.21,<2"
 vcftools = ">=0.1.16,<0.2"
 bcftools = ">=1.21,<2"
@@ -67,9 +68,10 @@ echtvar = ">=0.2.4,<0.3"
 #   pixi run -e vep setup-vep
 # Each setup rechecks jdk.java.net's latest production release; no early access
 # or older Conda Java is used. Repeat setup to adopt future Java releases.
-# Downloads are verified by the setup scripts, not represented as Conda packages.
+# Java/VEP/SnpEff downloads are verified by their setup scripts, not Conda.
 # VEP/SnpEff sources are pinned; Java deliberately tracks latest instead of a pin.
-# Installed sources live under each environment's opt/ and survive pixi install.
+# These tools live under opt/; GitHub R packages install into lib/R/library.
+# GitHub R packages track upstream and are not pinned by pixi.lock.
 # VEP caches, FASTA, plugins and optional BigWig support are not installed here.
 # Runtime commands remain: pixi run -e vep vep ... / pixi run snpEff ...
 [feature.runtime.dependencies]
@@ -87,8 +89,12 @@ cmd = "python scripts/setup-snpeff.py"
 depends-on = ["setup-java"]
 description = "Install standalone SnpEff without Conda's older Java dependency"
 
+[tasks.setup-r-packages]
+cmd = "Rscript --vanilla scripts/setup-r-packages.R"
+description = "Install GitHub gGnome, JaBbA, and Skilift into the default R environment"
+
 [tasks.setup-pipeline]
-depends-on = ["setup-snpeff"]
+depends-on = ["setup-snpeff", "setup-r-packages"]
 description = "Set up the main environment's source-managed tools"
 
 [tasks.setup-snpeff-force]
@@ -98,7 +104,7 @@ description = "Replace managed Java and SnpEff, discarding local SnpEff data and
 
 [tasks.setup-pipeline-force]
 depends-on = ["setup-snpeff-force"]
-description = "Force reinstall the main environment's source-managed tools"
+description = "Force reinstall managed Java and SnpEff/SnpSift"
 
 # Install upstream VEP with setup-vep, not Bioconda's legacy BioPerl metapackage.
 [feature.vep.dependencies]
